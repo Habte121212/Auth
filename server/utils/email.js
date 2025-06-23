@@ -22,9 +22,8 @@ async function sendVerificationEmail(user, req) {
       pass: process.env.EMAIL_PASS,
     },
   })
-  const verifyUrl = `${req.protocol}://${req.get(
-    'host',
-  )}/api/auth/verify-email?token=${token}`
+  // Use a fixed backend URL for local development
+  const verifyUrl = `http://localhost:8600/server/auth/verify-email?token=${token}`
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
     to: user.email,

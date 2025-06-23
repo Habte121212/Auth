@@ -1,5 +1,12 @@
 import React, { useState } from 'react'
 import './login.scss'
+import { useLocation, useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import { toast } from 'react-toastify'
+import { useAuth } from '../context/AuthContex'
+import ForgotPasswordModal from '../restpassword/ForgotPasswordModal'
+
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8600'
 
 const Login = () => {
   const [form, setForm] = useState({
@@ -11,49 +18,119 @@ const Login = () => {
   const [success, setSuccess] = useState(false)
   const [socialLoading, setSocialLoading] = useState(false)
   const [showForgot, setShowForgot] = useState(false)
-  const [forgotEmail, setForgotEmail] = useState('')
-  const [forgotMsg, setForgotMsg] = useState('')
   const [remember, setRemember] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { setUser, user } = useAuth()
+  const query = new URLSearchParams(location.search)
+  const verified = query.get('verified') === '1'
+
+  // Auto-redirect if already logged in
+  React.useEffect(() => {
+    if (user) navigate('/')
+  }, [user, navigate])
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    // Client-side validation
+    if (!form.email.includes('@')) {
+      toast.error('Please enter a valid email address.')
+      return
+    }
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
     setLoading(true)
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false)
-      // Save email to localStorage if remember is checked
+    try {
+      // Fetch CSRF token
+      const { data: csrfData } = await axios.get(`${BASE_URL}/csrf-token`, {
+        withCredentials: true,
+      })
+      // Send login request
+      const res = await axios.post(
+        `${BASE_URL}/server/auth/login`,
+        {
+          email: form.email,
+          password: form.password,
+        },
+        {
+          withCredentials: true,
+          headers: {
+            'X-CSRF-Token': csrfData.csrfToken,
+          },
+        },
+      )
+      setSuccess(true)
+      setError('') // Clear any previous error
+      toast.success('Login successful!')
+      // remember me: store or remove email
       if (remember) {
         localStorage.setItem('rememberedEmail', form.email)
       } else {
         localStorage.removeItem('rememberedEmail')
       }
-    }, 1000)
+      // Set user in context and redirect to home
+      setUser(res.data.user)
+      navigate('/')
+    } catch (err) {
+      // Check for unverified email error from backend
+      const errorMsg =
+        err.response?.data?.error || 'Login failed. Please try again.'
+      setError(errorMsg)
+      setSuccess(false) // Clear any previous success
+      toast.error(errorMsg)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleGoogleLogin = () => {
     setSocialLoading('google')
-    // Simulate Google login
-    setTimeout(() => {
-      setSocialLoading(false)
-    }, 1000)
+    window.location.href = `${BASE_URL}/server/auth/google`
   }
 
-  const handleForgot = () => {
-    setShowForgot(true)
-    setForgotMsg('')
-    setForgotEmail('')
-  }
-
-  const handleForgotSubmit = (e) => {
-    e.preventDefault()
-    // Simulate sending reset email
-    setForgotMsg('If this email exists, a reset link has been sent.')
-    setTimeout(() => setShowForgot(false), 2000)
+  // Resend verification email
+  const handleResendVerification = async () => {
+    try {
+      if (!form.email) {
+        toast.error('Please enter your email to resend verification.')
+        return
+      }
+      setResendLoading(true)
+      setResendSuccess(false)
+      // Fetch CSRF token
+      const { data: csrfData } = await axios.get(`${BASE_URL}/csrf-token`, {
+        withCredentials: true,
+      })
+      // Send resend verification request with CSRF token
+      const res = await axios.post(
+        `${BASE_URL}/server/auth/resend-verification`,
+        { email: form.email },
+        {
+          headers: { 'X-CSRF-Token': csrfData.csrfToken },
+          withCredentials: true,
+        },
+      )
+      toast.success(
+        res.data.message ||
+          'Verification email resent. Please check your inbox.',
+      )
+      setResendSuccess(true)
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error || 'Failed to resend verification email.',
+      )
+    } finally {
+      setResendLoading(false)
+    }
   }
 
   // On mount, prefill email if remembered
@@ -65,10 +142,20 @@ const Login = () => {
     }
   }, [])
 
+  // Optionally, reset socialLoading if needed on unmount or navigation
+  React.useEffect(() => {
+    return () => setSocialLoading(false)
+  }, [])
+
   return (
     <div className="login">
       <div className="loginContainer">
         <h2>Sign In</h2>
+        {verified && (
+          <div className="success" style={{ marginBottom: '1rem' }}>
+            Your email has been verified successfully! Please log in.
+          </div>
+        )}
         <form className="form" onSubmit={handleSubmit}>
           <label>
             <input
@@ -93,7 +180,7 @@ const Login = () => {
               value={form.password}
               onChange={handleChange}
             />
-            <div className="forgetPassword" onClick={handleForgot}>
+            <div className="forgetPassword" onClick={() => setShowForgot(true)}>
               Forgot Password?
             </div>
           </label>
@@ -109,6 +196,56 @@ const Login = () => {
             </label>
           </div>
           {error && <div className="error">{error}</div>}
+          {error &&
+            (error.toLowerCase().includes('verify') ||
+              error.toLowerCase().includes('not verified')) && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  marginBottom: '1rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="resendBtn"
+                  style={{
+                    marginBottom: resendSuccess ? '0.5rem' : '0',
+                    marginTop: '-0.5rem',
+                    background: resendSuccess ? '#e0ffe0' : '#1976d2',
+                    color: resendSuccess ? '#1976d2' : '#fff',
+                    border: resendSuccess ? '1px solid #1976d2' : 'none',
+                    cursor: resendLoading ? 'not-allowed' : 'pointer',
+                    opacity: resendLoading ? 0.7 : 1,
+                    transition: 'all 0.2s',
+                    minWidth: '200px',
+                    position: 'relative',
+                  }}
+                  onClick={handleResendVerification}
+                  disabled={loading || resendLoading || resendSuccess}
+                >
+                  {resendLoading ? (
+                    <span className="loader" style={{ marginRight: 8 }}></span>
+                  ) : resendSuccess ? (
+                    'Verification Email Sent!'
+                  ) : (
+                    'Resend verification email'
+                  )}
+                </button>
+                {resendSuccess && (
+                  <span
+                    style={{
+                      color: '#27ae60',
+                      fontSize: '0.95rem',
+                      marginTop: 2,
+                    }}
+                  >
+                    Please check your inbox (and spam folder).
+                  </span>
+                )}
+              </div>
+            )}
           <button
             type="submit"
             className="loginBtn"
@@ -167,30 +304,10 @@ const Login = () => {
           </div>
         </div>
         {showForgot && (
-          <div className="forgotModal">
-            <form className="forgotForm" onSubmit={handleForgotSubmit}>
-              <h3>Reset Password</h3>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={forgotEmail}
-                onChange={(e) => setForgotEmail(e.target.value)}
-                required
-                autoFocus
-              />
-              <button type="submit" className="loginBtn">
-                Send Reset Link
-              </button>
-              {forgotMsg && <div className="success">{forgotMsg}</div>}
-              <button
-                type="button"
-                className="closeBtn"
-                onClick={() => setShowForgot(false)}
-              >
-                &times;
-              </button>
-            </form>
-          </div>
+          <ForgotPasswordModal
+            show={showForgot}
+            onClose={() => setShowForgot(false)}
+          />
         )}
       </div>
     </div>

@@ -6,6 +6,7 @@ const { csrfProtection } = require('./middleware/auth')
 const connectDB = require('./db/dbconfig.js')
 const session = require('express-session')
 const passport = require('passport')
+const tokenUtils = require('./utils/auth')
 require('./passport')
 
 dotenv.config()
@@ -56,6 +57,29 @@ app.get(
   '/server/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
+    // Generate JWT for the user
+    const accessToken = tokenUtils.generateAccessToken(req.user.id)
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 15 min
+    })
+    res.redirect('http://localhost:5173/')
+  },
+)
+app.get(
+  '/api/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Generate JWT for the user
+    const accessToken = tokenUtils.generateAccessToken(req.user.id)
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 15 min
+    })
     res.redirect('http://localhost:5173/')
   },
 )

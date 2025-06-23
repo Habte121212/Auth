@@ -13,6 +13,8 @@ router.post('/refresh', authController.refresh)
 router.post('/logout', authenticate, authController.logout)
 // Email verification
 router.get('/verify-email', authController.verifyEmail)
+// Resend verification email
+router.post('/resend-verification', authController.resendVerificationEmail)
 // Example protected route
 router.get('/me', authenticate, (req, res) => {
   res.json({ user: req.user })

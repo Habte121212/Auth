@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 
-
 const AuthContext = React.createContext()
 
 export const AuthProvider = ({ children }) => {
@@ -8,14 +7,16 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // On mount, check if user is already authenticated 
+  // On mount, check if user is already authenticated
   useEffect(() => {
     const checkAuth = async () => {
       setLoading(true)
       setError(null)
       try {
-        //  use HTTP-only cookies 
-        const res = await fetch('#', { credentials: 'include' })
+        //  use HTTP-only cookies
+        const res = await fetch('http://localhost:8600/server/auth/me', {
+          credentials: 'include',
+        })
         if (res.ok) {
           const data = await res.json()
           setUser(data.user)
@@ -37,7 +38,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('#', {
+      const res = await fetch('http://localhost:8600/server/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -68,7 +69,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true)
     setError(null)
     try {
-      await fetch('#', {
+      await fetch('http://localhost:8600/server/auth/logout', {
         method: 'POST',
         credentials: 'include',
       })
@@ -78,7 +79,9 @@ export const AuthProvider = ({ children }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, setUser, loading, error, login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   )

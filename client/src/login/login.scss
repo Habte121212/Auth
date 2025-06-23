@@ -367,3 +367,13 @@ h2 {
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+
+.togglePassword {
+  -webkit-user-select: none;
+  user-select: none;
+  transition: color 0.18s;
+  &:hover,
+  &:focus {
+    color: #174ea6;
+  }
+}

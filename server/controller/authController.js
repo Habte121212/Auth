@@ -75,13 +75,11 @@ const register = async (req, res) => {
 
     // Return user info (excluding password)
     const { password: _, ...userWithoutPassword } = newUser
-    res
-      .status(200)
-      .json({
-        message:
-          'Registration successful. Please check your email to verify your account.',
-        user: userWithoutPassword,
-      })
+    res.status(200).json({
+      message:
+        'Registration successful. Please check your email to verify your account.',
+      user: userWithoutPassword,
+    })
   } catch (error) {
     console.error('Error during registration:', error)
     res.status(500).json({ error: 'Internal server error' })
@@ -102,6 +100,11 @@ const login = async (req, res) => {
     const { email, password } = req.body
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user) return res.status(401).json({ error: 'Invalid credentials' })
+    if (!user.emailVerified) {
+      return res
+        .status(403)
+        .json({ error: 'Please verify your email before logging in.' })
+    }
     const valid = await bcrypt.compare(password, user.password)
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' })
 
@@ -160,7 +163,8 @@ const verifyEmail = async (req, res) => {
       data: { emailVerified: true },
     })
     await prisma.emailVerificationToken.delete({ where: { token } })
-    res.status(200).json({ message: 'Email verified successfully' })
+    // Redirect to login page with verified=1
+    return res.redirect('http://localhost:5173/login?verified=1')
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' })
   }
@@ -229,10 +233,30 @@ const logout = async (req, res) => {
   }
 }
 
+// Resend verification email
+const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) return res.status(400).json({ error: 'Email is required.' })
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) return res.status(404).json({ error: 'User not found.' })
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email is already verified.' })
+    }
+    await sendVerificationEmail(user, req)
+    res.status(200).json({
+      message: 'Verification email resent. Please check your inbox.',
+    })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to resend verification email.' })
+  }
+}
+
 module.exports = {
   register,
   login,
   refresh,
   logout,
   verifyEmail,
+  resendVerificationEmail,
 }

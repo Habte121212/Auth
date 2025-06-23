@@ -20,9 +20,9 @@ async function sendResetEmail(user, req) {
       pass: process.env.EMAIL_PASS,
     },
   })
-  const resetUrl = `${req.protocol}://${req.get(
-    'host',
-  )}/api/auth/reset-password?token=${token}`
+  // Use frontend URL for reset link
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+  const resetUrl = `${frontendUrl}/reset-password?token=${token}`
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
     to: user.email,

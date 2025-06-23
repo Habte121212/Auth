@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import './register.scss'
+import axios from 'axios'
+import { toast } from 'react-toastify'
 
 const Register = () => {
   const [form, setForm] = useState({
@@ -8,7 +10,6 @@ const Register = () => {
     password: '',
     confirmPassword: '',
   })
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [socialLoading, setSocialLoading] = useState(false)
@@ -17,24 +18,64 @@ const Register = () => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    setError('')
+    setSuccess(false)
+    // validation
+    if (form.password !== form.confirmPassword) {
+      toast.error('Passwords do not match')
+      return
+    }
+    if (form.password.length < 6) {
+      toast.error('Password must be at least 6 characters long')
+      return
+    }
+    if (form.name.length < 3) {
+      toast.error('Name must be at least 3 characters long')
+      return
+    }
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.email)) {
+      toast.error('Invalid email address')
+      return
+    }
     setLoading(true)
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Fetch CSRF token
+      const { data } = await axios.get('http://localhost:8600/csrf-token', {
+        withCredentials: true,
+      })
+      await axios.post(
+        'http://localhost:8600/server/auth/register',
+        {
+          name: form.name,
+          email: form.email,
+          password: form.password,
+        },
+        {
+          withCredentials: true,
+          headers: {
+            'X-CSRF-Token': data.csrfToken,
+          },
+        },
+      )
+      setSuccess(true)
+      toast.success(
+        'Registration successful! Check your email to verify your account.',
+      )
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error || 'Registration failed. Please try again.',
+      )
+    } finally {
       setLoading(false)
-      // setSuccess(true)
-    }, 1000)
+    }
   }
 
   const handleGoogleLogin = () => {
-    setSocialLoading('google')
-    // Simulate Google login
-    setTimeout(() => {
-      setSocialLoading(false)
-      // setSuccess(true)
-    }, 1000)
+    setSocialLoading(true)
+    window.location.href = 'http://localhost:8600/server/auth/google'
   }
 
   return (
@@ -90,7 +131,6 @@ const Register = () => {
               onChange={handleChange}
             />
           </label>
-          {error && <div className="error">{error}</div>}
           <button
             type="submit"
             className="registerBtn"
@@ -98,14 +138,16 @@ const Register = () => {
           >
             {loading ? 'Registering...' : 'Register'}
           </button>
-          {success && <div className="success">Registration successful!</div>}
+          {success && (
+            <div className="success">
+              Registration successful! Check your email to verify your account.
+            </div>
+          )}
         </form>
         <div className="socialLogin">
           <button
             type="button"
-            className={`socialBtn google${
-              socialLoading === 'google' ? ' loading' : ''
-            }`}
+            className={`socialBtn google${socialLoading ? ' loading' : ''}`}
             disabled={loading || success || socialLoading}
             onClick={handleGoogleLogin}
           >
@@ -135,7 +177,7 @@ const Register = () => {
                 <path fill="none" d="M0 0h48v48H0z" />
               </g>
             </svg>
-            {socialLoading === 'google' ? (
+            {socialLoading ? (
               <span className="loader"></span>
             ) : (
               'Continue with Google'

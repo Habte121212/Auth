@@ -16,6 +16,7 @@ module.exports = {
       data: { emailVerified: true },
     })
     await prisma.emailVerificationToken.delete({ where: { token } })
-    res.json({ message: 'Email verified successfully.' })
+    // Redirect to login page with verified=1, let frontend show the message
+    return res.redirect('http://localhost:5173/login?verified=1')
   },
 }
