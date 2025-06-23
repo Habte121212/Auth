@@ -2,6 +2,7 @@ const prisma = require('../prismaClient')
 const bcrypt = require('bcrypt')
 const Joi = require('joi')
 const tokenUtils = require('../utils/auth')
+const { sendVerificationEmail } = require('../utils/email')
 
 // Register a new user
 const register = async (req, res) => {
@@ -38,8 +39,11 @@ const register = async (req, res) => {
         email,
         name,
         password: hashedPassword,
+        emailVerified: false,
       },
     })
+    // Send verification email
+    await sendVerificationEmail(newUser, req)
 
     // Generate tokens
     const accessToken = tokenUtils.generateAccessToken(newUser.id)
@@ -73,7 +77,11 @@ const register = async (req, res) => {
     const { password: _, ...userWithoutPassword } = newUser
     res
       .status(200)
-      .json({ message: 'Registration successful', user: userWithoutPassword })
+      .json({
+        message:
+          'Registration successful. Please check your email to verify your account.',
+        user: userWithoutPassword,
+      })
   } catch (error) {
     console.error('Error during registration:', error)
     res.status(500).json({ error: 'Internal server error' })
@@ -126,9 +134,34 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     })
     const { password: _, ...userWithoutPassword } = user
-    res.status(200).json({message: 'Login successful', user: userWithoutPassword })
+    res
+      .status(200)
+      .json({ message: 'Login successful', user: userWithoutPassword })
   } catch (error) {
     console.error('Error during login:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+// Email verification endpoint
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.query
+    const dbToken = await prisma.emailVerificationToken.findUnique({
+      where: { token },
+    })
+    if (!dbToken || dbToken.expiresAt < new Date()) {
+      return res
+        .status(400)
+        .json({ error: 'Invalid or expired verification token' })
+    }
+    await prisma.user.update({
+      where: { id: dbToken.userId },
+      data: { emailVerified: true },
+    })
+    await prisma.emailVerificationToken.delete({ where: { token } })
+    res.status(200).json({ message: 'Email verified successfully' })
+  } catch (error) {
     res.status(500).json({ error: 'Internal server error' })
   }
 }
@@ -201,4 +234,5 @@ module.exports = {
   login,
   refresh,
   logout,
+  verifyEmail,
 }

@@ -23,8 +23,28 @@ model user {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   refreshTokens refreshToken[]
+  emailVerified Boolean @default(false)
+  emailVerificationTokens emailVerificationToken[]
+  passwordResetTokens passwordResetToken[]
 }
+
 model refreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    String
+  user      user     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+}
+
+model emailVerificationToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    String
+  user      user     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+}
+
+model passwordResetToken {
   id        Int      @id @default(autoincrement())
   token     String   @unique
   userId    String
