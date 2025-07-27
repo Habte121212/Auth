@@ -8,7 +8,26 @@ module.exports = {
     const { email } = req.body
     if (!email) return res.status(400).json({ error: 'Email required.' })
     const user = await prisma.user.findUnique({ where: { email } })
-    if (user) await sendResetEmail(user, req)
+    if (user) {
+      // Rate limit: max 3 reset requests per 24 hours
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const resetCount = await prisma.passwordResetToken.count({
+        where: {
+          userId: user.id,
+          // createdAt is not in schema, so use expiresAt as proxy (expiresAt - 1h = created)
+          expiresAt: {
+            gte: new Date(Date.now() + 60 * 60 * 1000 - 24 * 60 * 60 * 1000),
+          },
+        },
+      })
+      if (resetCount >= 3) {
+        return res.status(429).json({
+          error:
+            'You have reached the password reset limit (3 per 24 hours). Please try again after 24 hours from your first request.',
+        })
+      }
+      await sendResetEmail(user, req)
+    }
     res.json({ message: 'If that email exists, a reset link has been sent.' })
   },
   async verifyToken(req, res) {

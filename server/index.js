@@ -1,5 +1,6 @@
-const express = require('express')
 const dotenv = require('dotenv')
+dotenv.config()
+const express = require('express')
 const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const { csrfProtection } = require('./middleware/auth')
@@ -8,8 +9,6 @@ const session = require('express-session')
 const passport = require('passport')
 const tokenUtils = require('./utils/auth')
 require('./passport')
-
-dotenv.config()
 
 // initialize
 const app = express()
@@ -23,6 +22,23 @@ app.use(express.json())
 app.use(cookieParser())
 app.use(
   session({ secret: 'your_secret', resave: false, saveUninitialized: false }),
+)
+
+// Add the /auth/google/callback route after app is initialized
+app.get(
+  '/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Generate JWT for the user
+    const accessToken = tokenUtils.generateAccessToken(req.user.id)
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 15 min
+    })
+    res.redirect('http://localhost:5173/')
+  },
 )
 app.use(passport.initialize())
 app.use(passport.session())
@@ -65,7 +81,7 @@ app.get(
       sameSite: 'lax',
       maxAge: 15 * 60 * 1000, // 15 min
     })
-    res.redirect('http://localhost:5173/')
+    res.redirect('/')
   },
 )
 app.get(
@@ -80,7 +96,7 @@ app.get(
       sameSite: 'lax',
       maxAge: 15 * 60 * 1000, // 15 min
     })
-    res.redirect('http://localhost:5173/')
+    res.redirect('/')
   },
 )
 

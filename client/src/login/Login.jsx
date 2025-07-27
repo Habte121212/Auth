@@ -5,6 +5,7 @@ import axios from 'axios'
 import { toast } from 'react-toastify'
 import { useAuth } from '../context/AuthContex'
 import ForgotPasswordModal from '../restpassword/ForgotPasswordModal'
+import WarningMessage from './WarningMessage'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8600'
 
@@ -21,6 +22,8 @@ const Login = () => {
   const [remember, setRemember] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
+  const [resendLimit, setResendLimit] = useState(false)
+  const [resendCount, setResendCount] = useState(0)
   const location = useLocation()
   const navigate = useNavigate()
   const { setUser, user } = useAuth()
@@ -29,7 +32,11 @@ const Login = () => {
 
   // Auto-redirect if already logged in
   React.useEffect(() => {
-    if (user) navigate('/')
+    // Prevent auto-redirect to home if on /login or /login?verified=1
+    const path = window.location.pathname + window.location.search
+    if (user && !path.startsWith('/login')) {
+      navigate('/')
+    }
   }, [user, navigate])
 
   const handleChange = (e) => {
@@ -99,6 +106,28 @@ const Login = () => {
 
   // Resend verification email
   const handleResendVerification = async () => {
+    // Check local resend count before sending request
+    const resendData = JSON.parse(
+      localStorage.getItem('resendVerification') || '{}',
+    )
+    let count = resendData.count || 0
+    let timestamp = resendData.timestamp || Date.now()
+    if (Date.now() - timestamp > 24 * 60 * 60 * 1000) {
+      // Reset after 24 hours
+      count = 0
+      timestamp = Date.now()
+      localStorage.setItem(
+        'resendVerification',
+        JSON.stringify({ count, timestamp }),
+      )
+      setResendCount(0)
+      setResendLimit(false)
+    }
+    if (count >= 3) {
+      setResendLimit(true)
+      toast.error('You have reached the resend limit (3 per 24 hours).')
+      return
+    }
     try {
       if (!form.email) {
         toast.error('Please enter your email to resend verification.')
@@ -106,6 +135,7 @@ const Login = () => {
       }
       setResendLoading(true)
       setResendSuccess(false)
+      setResendLimit(false)
       // Fetch CSRF token
       const { data: csrfData } = await axios.get(`${BASE_URL}/csrf-token`, {
         withCredentials: true,
@@ -124,21 +154,54 @@ const Login = () => {
           'Verification email resent. Please check your inbox.',
       )
       setResendSuccess(true)
-    } catch (err) {
-      toast.error(
-        err.response?.data?.error || 'Failed to resend verification email.',
+      // Update resend count in localStorage
+      const newCount = count + 1
+      setResendCount(newCount)
+      localStorage.setItem(
+        'resendVerification',
+        JSON.stringify({ count: newCount, timestamp }),
       )
+      if (newCount >= 3) setResendLimit(true)
+    } catch (err) {
+      let errorMsg =
+        err.response?.data?.error || 'Failed to resend verification email.'
+      if (
+        err.response?.status === 429 ||
+        errorMsg
+          .toLowerCase()
+          .includes('only request verification email 3 times') ||
+        errorMsg.toLowerCase().includes('resend limit')
+      ) {
+        setResendLimit(true)
+      } else if (err.response?.status === 500) {
+        errorMsg = 'Something went wrong on the server. Please try again later.'
+      }
+      toast.error(errorMsg)
     } finally {
       setResendLoading(false)
     }
   }
 
-  // On mount, prefill email if remembered
+  // On mount, prefill email if remembered and check resend count
   React.useEffect(() => {
     const remembered = localStorage.getItem('rememberedEmail')
     if (remembered) {
       setForm((f) => ({ ...f, email: remembered }))
       setRemember(true)
+    }
+    // Check resend count
+    const resendData = JSON.parse(
+      localStorage.getItem('resendVerification') || '{}',
+    )
+    if (resendData && resendData.count && resendData.timestamp) {
+      // If 24 hours passed, reset
+      if (Date.now() - resendData.timestamp > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem('resendVerification')
+        setResendCount(0)
+      } else {
+        setResendCount(resendData.count)
+        if (resendData.count >= 3) setResendLimit(true)
+      }
     }
   }, [])
 
@@ -207,42 +270,92 @@ const Login = () => {
                   marginBottom: '1rem',
                 }}
               >
-                <button
-                  type="button"
-                  className="resendBtn"
-                  style={{
-                    marginBottom: resendSuccess ? '0.5rem' : '0',
-                    marginTop: '-0.5rem',
-                    background: resendSuccess ? '#e0ffe0' : '#1976d2',
-                    color: resendSuccess ? '#1976d2' : '#fff',
-                    border: resendSuccess ? '1px solid #1976d2' : 'none',
-                    cursor: resendLoading ? 'not-allowed' : 'pointer',
-                    opacity: resendLoading ? 0.7 : 1,
-                    transition: 'all 0.2s',
-                    minWidth: '200px',
-                    position: 'relative',
-                  }}
-                  onClick={handleResendVerification}
-                  disabled={loading || resendLoading || resendSuccess}
-                >
-                  {resendLoading ? (
-                    <span className="loader" style={{ marginRight: 8 }}></span>
-                  ) : resendSuccess ? (
-                    'Verification Email Sent!'
-                  ) : (
-                    'Resend verification email'
-                  )}
-                </button>
-                {resendSuccess && (
-                  <span
-                    style={{
-                      color: '#27ae60',
-                      fontSize: '0.95rem',
-                      marginTop: 2,
-                    }}
-                  >
-                    Please check your inbox (and spam folder).
-                  </span>
+                {resendLimit ? (
+                  <WarningMessage
+                    image={
+                      'https://cdn-icons-png.flaticon.com/512/463/463612.png' // warning icon
+                    }
+                    alt="Rate limit warning"
+                    message="You have reached the resend limit (3 per 24 hours). Please try again after 24 hours from your first request. If you continue to have issues, please contact support."
+                  />
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="resendBtn"
+                      style={{
+                        marginBottom: resendSuccess ? '0.5rem' : '0',
+                        marginTop: '-0.5rem',
+                        background: resendSuccess
+                          ? 'linear-gradient(90deg, #e0ffe0 0%, #b2f7b2 100%)'
+                          : 'linear-gradient(90deg, #6366F1 0%, #4F46E5 100%)',
+                        color: resendSuccess ? '#1976d2' : '#fff',
+                        border: resendSuccess ? '1.5px solid #1976d2' : 'none',
+                        cursor: resendLoading ? 'not-allowed' : 'pointer',
+                        opacity: resendLoading ? 0.7 : 1,
+                        transition: 'all 0.2s',
+                        minWidth: '220px',
+                        position: 'relative',
+                        fontWeight: 700,
+                        fontSize: '17px',
+                        borderRadius: '24px',
+                        boxShadow: resendSuccess
+                          ? '0 2px 8px rgba(39,174,96,0.08)'
+                          : '0 4px 16px rgba(79,70,229,0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                      }}
+                      onClick={handleResendVerification}
+                      disabled={loading || resendLoading || resendLimit}
+                    >
+                      {resendLoading ? (
+                        <span
+                          className="loader"
+                          style={{ marginRight: 8 }}
+                        ></span>
+                      ) : resendSuccess ? (
+                        <>
+                          <svg
+                            width="20"
+                            height="20"
+                            fill="#27ae60"
+                            style={{ marginRight: 6 }}
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M7.629 15.314a1 1 0 0 1-1.414 0l-3.243-3.243a1 1 0 1 1 1.414-1.414l2.536 2.536 6.536-6.536a1 1 0 0 1 1.414 1.414l-7.243 7.243z" />
+                          </svg>
+                          Sent!
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            width="20"
+                            height="20"
+                            fill="#fff"
+                            style={{ marginRight: 6 }}
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M2.94 6.94a8 8 0 1 1 11.314 11.314A8 8 0 0 1 2.94 6.94zm1.414 1.414a6 6 0 1 0 8.486 8.486A6 6 0 0 0 4.354 8.354zm2.828 2.828a1 1 0 0 1 1.414 0l2.828 2.828a1 1 0 0 1-1.414 1.414l-2.828-2.828a1 1 0 0 1 0-1.414z" />
+                          </svg>
+                          Resend verification email
+                        </>
+                      )}
+                    </button>
+                    {resendSuccess && (
+                      <span
+                        style={{
+                          color: '#27ae60',
+                          fontSize: '0.98rem',
+                          marginTop: 4,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Please check your inbox (and spam folder).
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             )}

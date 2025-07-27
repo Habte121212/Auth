@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import './restpassword.scss'
-import { toast} from 'react-toastify'
+import { toast } from 'react-toastify'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8600'
 
@@ -42,7 +42,10 @@ const ForgotPasswordModal = ({ show, onClose }) => {
       )
       setForgotMsg('If this email exists, a reset link has been sent.')
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to send reset link. Please try again')
+      toast.error(
+        err.response?.data?.error ||
+          'Failed to send reset link. Please try again',
+      )
     } finally {
       setLoading(false)
     }

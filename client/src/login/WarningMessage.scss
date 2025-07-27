@@ -1,0 +1,25 @@
+.warning-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #fffbe6;
+  border: 1.5px solid #ffe082;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 16px 0;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.08);
+}
+
+.warning-image {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 2px 6px rgba(255, 193, 7, 0.12));
+}
+
+.warning-text {
+  color: #b26a00;
+  font-size: 1.08rem;
+  font-weight: 500;
+  text-align: center;
+}

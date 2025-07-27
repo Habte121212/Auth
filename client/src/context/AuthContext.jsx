@@ -19,17 +19,7 @@ export const AuthProvider = ({ children }) => {
         })
         if (res.ok) {
           const data = await res.json()
-          if (
-            data.user &&
-            (data.user.emailVerified || data.user.provider === 'google')
-          ) {
-            setUser(data.user)
-          } else if (data.user && !data.user.emailVerified) {
-            setError('Please verify your email before logging in.')
-            setUser(null)
-          } else {
-            setUser(null)
-          }
+          setUser(data.user)
         } else {
           setUser(null)
         }
@@ -56,22 +46,9 @@ export const AuthProvider = ({ children }) => {
       })
       if (res.ok) {
         const data = await res.json()
-        if (
-          data.user &&
-          (data.user.emailVerified || data.user.provider === 'google')
-        ) {
-          setUser(data.user)
-          setError(null)
-          return true
-        } else if (data.user && !data.user.emailVerified) {
-          setError('Please verify your email before logging in.')
-          setUser(null)
-          return false
-        } else {
-          setError(data.message || 'Login failed')
-          setUser(null)
-          return false
-        }
+        setUser(data.user)
+        setError(null)
+        return true
       } else {
         const data = await res.json()
         setError(data.message || 'Login failed')

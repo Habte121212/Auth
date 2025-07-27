@@ -153,18 +153,23 @@ const verifyEmail = async (req, res) => {
     const dbToken = await prisma.emailVerificationToken.findUnique({
       where: { token },
     })
-    if (!dbToken || dbToken.expiresAt < new Date()) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid or expired verification token' })
+    if (!dbToken) {
+      return res.status(400).json({ error: 'Invalid verification token.' })
+    }
+    if (dbToken.expiresAt < new Date()) {
+      await prisma.emailVerificationToken.delete({ where: { token } })
+      return res.status(400).json({
+        error:
+          'Verification link expired. Please request a new verification email.',
+      })
     }
     await prisma.user.update({
       where: { id: dbToken.userId },
       data: { emailVerified: true },
     })
     await prisma.emailVerificationToken.delete({ where: { token } })
-    // Redirect to login page with verified=1
-    return res.redirect('http://localhost:5173/login?verified=1')
+    // Redirect to spinner page, which will then redirect to login
+    return res.redirect('http://localhost:5173/verify-redirect')
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' })
   }
@@ -236,18 +241,37 @@ const logout = async (req, res) => {
 // Resend verification email
 const resendVerificationEmail = async (req, res) => {
   try {
+    const schema = Joi.object({
+      email: Joi.string().email().trim().required(),
+    })
+    const { error } = schema.validate(req.body)
+    if (error) return res.status(400).json({ error: error.details[0].message })
     const { email } = req.body
-    if (!email) return res.status(400).json({ error: 'Email is required.' })
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user) return res.status(404).json({ error: 'User not found.' })
     if (user.emailVerified) {
       return res.status(400).json({ error: 'Email is already verified.' })
+    }
+    // Rate limit: allow max 3 resends per 24 hours
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const resendCount = await prisma.emailVerificationToken.count({
+      where: {
+        userId: user.id,
+        createdAt: { gte: since },
+      },
+    })
+    if (resendCount >= 3) {
+      return res.status(429).json({
+        error:
+          'You have reached the resend limit (3 per 24 hours). Please try again after 24 hours from your first request.',
+      })
     }
     await sendVerificationEmail(user, req)
     res.status(200).json({
       message: 'Verification email resent. Please check your inbox.',
     })
   } catch (error) {
+    console.error('Resend verification backend error:', error)
     res.status(500).json({ error: 'Failed to resend verification email.' })
   }
 }

@@ -1,13 +1,14 @@
 const passport = require('passport')
 const GoogleStrategy = require('passport-google-oauth20').Strategy
 const prisma = require('./prismaClient')
+console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID)
 
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: '/api/auth/google/callback',
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -21,8 +22,18 @@ passport.use(
               email: profile.emails[0].value,
               name: profile.displayName,
               password: '', // Social users may not have a password
+              emailVerified: true, // Trust Google email as verified
+              provider: 'google',
             },
           })
+        } else {
+          // If user exists but has no provider, update provider to 'google' (optional)
+          if (!user.provider || user.provider !== 'google') {
+            user = await prisma.user.update({
+              where: { email: profile.emails[0].value },
+              data: { provider: 'google', emailVerified: true },
+            })
+          }
         }
         return done(null, user)
       } catch (err) {
